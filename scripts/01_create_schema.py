@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS sentence_embeddings (
 CREATE INDEX IF NOT EXISTS sentence_embeddings_talk_id_idx 
 ON sentence_embeddings(talk_id);
 
+-- Index speaker names so filtering to one speaker stays fast
+CREATE INDEX IF NOT EXISTS sentence_embeddings_speaker_lookup_idx
+ON sentence_embeddings (lower(btrim(speaker)));
+
 -- Enable Row Level Security
 ALTER TABLE sentence_embeddings ENABLE ROW LEVEL SECURITY;
 
@@ -102,9 +106,12 @@ TO anon, authenticated
 USING (true);
 
 -- Create function for similarity search
+DROP FUNCTION IF EXISTS public.match_sentences(vector(1536), integer);
+
 CREATE OR REPLACE FUNCTION match_sentences(
   query_embedding vector(1536),
-  match_count int DEFAULT 20
+  match_count int DEFAULT 20,
+  filter_speaker text DEFAULT NULL
 )
 RETURNS TABLE (
   id uuid,
@@ -115,6 +122,7 @@ RETURNS TABLE (
   similarity float
 )
 LANGUAGE sql STABLE
+SET hnsw.iterative_scan = 'strict_order'
 AS $$
   SELECT
     sentence_embeddings.id,
@@ -124,9 +132,30 @@ AS $$
     sentence_embeddings.text,
     1 - (sentence_embeddings.embedding <=> query_embedding) as similarity
   FROM sentence_embeddings
+  WHERE filter_speaker IS NULL
+    OR lower(btrim(sentence_embeddings.speaker)) = lower(btrim(filter_speaker))
   ORDER BY sentence_embeddings.embedding <=> query_embedding
   LIMIT match_count;
 $$;
+
+-- Return the available speaker names while respecting sentence_embeddings RLS
+CREATE OR REPLACE FUNCTION public.list_speakers()
+RETURNS TABLE (speaker text)
+LANGUAGE sql STABLE SECURITY INVOKER
+AS $$
+  SELECT DISTINCT btrim(sentence_embeddings.speaker) AS speaker
+  FROM public.sentence_embeddings
+  WHERE sentence_embeddings.speaker IS NOT NULL
+    AND btrim(sentence_embeddings.speaker) <> ''
+  ORDER BY speaker;
+$$;
+
+REVOKE ALL ON FUNCTION public.match_sentences(vector(1536), integer, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.match_sentences(vector(1536), integer, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.list_speakers() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.list_speakers() TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
 """
 
     url = f"https://api.supabase.com/v1/projects/{SUPABASE_PROJECT_REF}/database/query"

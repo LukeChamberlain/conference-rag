@@ -81,8 +81,10 @@ const semanticStatus = document.getElementById('semantic-status');
 
 const ragInput = document.getElementById('rag-input');
 const ragBtn = document.getElementById('rag-btn');
+const ragSpeakerFilter = document.getElementById('rag-speaker-filter');
 const ragResults = document.getElementById('rag-results');
 const ragStatus = document.getElementById('rag-status');
+let speakerFilterReady = false;
 
 // ============================================
 // SETUP BANNER DETECTION
@@ -350,6 +352,10 @@ async function checkSearchReadiness() {
         }
         setSearchReady('semantic', semanticReady);
 
+        if (semanticReady) {
+            speakerFilterReady = await loadSpeakerOptions();
+        }
+
         // --- 1 generate-answer call (only if semantic pipeline is ready) ---
         if (!semanticReady) {
             setSearchReady('rag', false);
@@ -391,6 +397,9 @@ function setSearchReady(type, ready) {
 
     if (inputEl) inputEl.disabled = !ready;
     if (btnEl) btnEl.disabled = !ready;
+    if (type === 'rag' && ragSpeakerFilter) {
+        ragSpeakerFilter.disabled = !ready || !speakerFilterReady;
+    }
 
     if (panelEl) {
         if (ready) {
@@ -531,7 +540,16 @@ async function askQuestion() {
         const embedding = await getEmbedding(question);
 
         // Step 2: Search for similar sentences
-        const results = await searchSentences(embedding);
+        const selectedSpeaker = ragSpeakerFilter ? ragSpeakerFilter.value : '';
+        const results = await searchSentences(embedding, selectedSpeaker || null);
+
+        if (!results || results.length === 0) {
+            const message = selectedSpeaker
+                ? `No matching passages found for ${escapeHtml(selectedSpeaker)}. Try another question or choose “Any speaker”.`
+                : 'No matching passages found. Try a different question.';
+            showResults('rag', `<div class="no-results">${message}</div>`);
+            return;
+        }
 
         // Step 3: Group by talk (with similarity scores and URLs)
         const topTalks = groupByTalk(results);
@@ -560,6 +578,7 @@ async function askQuestion() {
         html += '<div class="result-sources"><strong>Sources:</strong></div>';
         for (const talk of topTalks) {
             const talkBadge = similarityBadge(talk.avgSimilarity);
+            const evidence = (talk.evidence || []).slice(0, 3);
             html += `<div class="result-card result-source">
                 <div class="result-card-header">
                     <div>
@@ -568,6 +587,23 @@ async function askQuestion() {
                     </div>
                     ${talkBadge}
                 </div>
+                <details class="source-evidence">
+                    <summary>
+                        <span>Why this talk matched</span>
+                        <span class="evidence-count">${evidence.length} retrieved ${evidence.length === 1 ? 'passage' : 'passages'}</span>
+                    </summary>
+                    <div class="evidence-passages">
+                        ${evidence.map((passage, index) => `
+                            <blockquote class="evidence-passage">
+                                <div class="evidence-passage-header">
+                                    <span>Passage ${index + 1}</span>
+                                    ${similarityBadge(passage.similarity)}
+                                </div>
+                                <p>“${escapeHtml(passage.text)}”</p>
+                            </blockquote>
+                        `).join('')}
+                    </div>
+                </details>
             </div>`;
         }
         showResults('rag', html);
@@ -597,16 +633,36 @@ async function getEmbedding(text) {
 }
 
 // Search sentences using vector similarity
-async function searchSentences(embedding) {
+async function searchSentences(embedding, speaker = null) {
     if (!supabaseClient) throw new Error('Supabase not configured');
 
     const { data, error } = await supabaseClient.rpc('match_sentences', {
         query_embedding: embedding,
-        match_count: 20
+        match_count: 20,
+        filter_speaker: speaker
     });
 
     if (error) throw new Error(`Database search failed: ${error.message}`);
     return data;
+}
+
+// Load the available speaker names through a small RLS-protected database function.
+async function loadSpeakerOptions() {
+    if (!ragSpeakerFilter || !supabaseClient) return false;
+
+    const { data, error } = await supabaseClient.rpc('list_speakers');
+    if (error || !Array.isArray(data)) {
+        console.warn('Could not load speaker options:', error?.message || 'Invalid response');
+        return false;
+    }
+
+    const speakers = [...new Set(data.map(row => row.speaker).filter(Boolean))];
+    ragSpeakerFilter.replaceChildren(new Option('Any speaker', ''));
+    for (const speaker of speakers) {
+        ragSpeakerFilter.add(new Option(speaker, speaker));
+    }
+
+    return true;
 }
 
 // Group search results by talk, computing average similarity per talk
@@ -624,7 +680,10 @@ function groupByTalk(sentences) {
                 totalSimilarity: 0
             };
         }
-        talkMap[sent.talk_id].sentences.push(sent.text);
+        talkMap[sent.talk_id].sentences.push({
+            text: sent.text,
+            similarity: sent.similarity
+        });
         talkMap[sent.talk_id].totalSimilarity += sent.similarity;
     }
 
@@ -636,7 +695,8 @@ function groupByTalk(sentences) {
             title: talk.title,
             speaker: talk.speaker,
             url: talk.url,
-            text: talk.sentences.join(' '),
+            text: talk.sentences.map(sentence => sentence.text).join(' '),
+            evidence: [...talk.sentences].sort((a, b) => b.similarity - a.similarity),
             // TODO: Is average similarity the right metric? Alternatives worth researching:
             // - Max similarity (best single match per talk)
             // - Average of top-3 sentences (reduces noise from weak matches)

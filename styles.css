@@ -327,7 +327,8 @@ button {
 input[type="email"],
 input[type="text"],
 input[type="password"],
-input[type="number"] {
+input[type="number"],
+select {
     width: 100%;
     padding: var(--spacing-sm);
     background: var(--surface);
@@ -343,6 +344,38 @@ input:focus {
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.1);
+}
+
+select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.1);
+}
+
+.speaker-filter {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0 0 var(--spacing-md);
+}
+
+.speaker-filter label {
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.speaker-filter select {
+    width: 100%;
+}
+
+.speaker-filter select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.speaker-filter p {
+    color: var(--text-muted);
+    font-size: 0.75rem;
 }
 
 /* ============================================
@@ -557,6 +590,79 @@ input:focus {
 
 .result-card.result-source {
     padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.source-evidence {
+    margin-top: var(--spacing-sm);
+    border-top: 1px solid var(--surface-light);
+    padding-top: 0.75rem;
+}
+
+.source-evidence summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    color: var(--primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+}
+
+.source-evidence summary::-webkit-details-marker {
+    display: none;
+}
+
+.source-evidence summary::after {
+    content: "+";
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.source-evidence[open] summary::after {
+    content: "−";
+}
+
+.evidence-count {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.evidence-passages {
+    display: grid;
+    gap: 0.65rem;
+    margin-top: 0.75rem;
+}
+
+.evidence-passage {
+    margin: 0;
+    padding: 0.75rem;
+    border-left: 2px solid var(--secondary);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.evidence-passage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    margin-bottom: 0.4rem;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.evidence-passage p {
+    color: var(--text);
+    font-size: 0.85rem;
+    line-height: 1.55;
 }
 
 /* Color-tinted RAG answer cards based on similarity */

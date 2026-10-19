@@ -130,6 +130,13 @@
                             autocomplete="off" disabled />
                         <button id="rag-btn" class="btn-primary" disabled>Ask</button>
                     </div>
+                    <div class="speaker-filter">
+                        <label for="rag-speaker-filter">Limit answers to a speaker</label>
+                        <select id="rag-speaker-filter" disabled>
+                            <option value="">Any speaker</option>
+                        </select>
+                        <p>When selected, retrieval and the AI answer use only that speaker’s talks.</p>
+                    </div>
                     <div class="search-results" id="rag-results"></div>
                 </div>
             </div>
